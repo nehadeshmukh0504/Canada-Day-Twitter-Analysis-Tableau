@@ -1,0 +1,56 @@
+library(ggplot2)
+library(dplyr)
+library(tidytext)
+library(igraph)
+library(ggraph)
+library(stringr)
+library(wordcloud)
+library(reshape2)
+library(widyr)
+canada <- read.csv(file="canada.csv", header=TRUE)
+head(canada)
+# Tokenising and cleaning
+token.pattern <- "([^A-Za-z_\\d#@']|'(?![A-Za-z_\\d#@]))"
+clean.pattern = "https|la|mfclzsfjjr|de|tco|en|amp|[[:cntrl:]]|\\'|\\!\\,|\\?|\\.|\\:"
+
+# Cleaning the dataset
+clean.tweets <- canada %>% 
+  select(text, country, source)%>%
+  mutate(text=iconv(text, "latin1", "ASCII", "")) %>%
+  mutate(text=str_replace_all(text,clean.pattern, "")) %>%
+  mutate(text=str_replace_all(text,"tco","")) %>%
+  mutate(text=tolower(text))
+
+# tokenizing the text column 
+tidy.all <- clean.tweets %>% 
+  unnest_tokens(word, text, token = "regex", pattern = token.pattern) %>%
+  filter(!word %in% stop_words$word,
+         str_detect(word, "[a-z]"))
+
+# Calculating the frequency of each word
+frequency.all<- tidy.all %>% 
+  count(word, sort = TRUE) 
+
+write.csv(clean.tweets, "clean_tweets.csv", row.names=TRUE)
+
+#Sentiment Analysis using NRC
+tidy.all %>%
+  filter(word!="canada")%>%
+  inner_join(get_sentiments("nrc")) %>%
+  count(sentiment, sort=TRUE)%>%
+  ggplot(aes(sentiment, n, fill=sentiment)) +
+  geom_bar(stat = "identity") +
+  theme(legend.position="none")+
+  labs(title = "Sentiment in Canada Day Tweets")
+
+#Wordcloud
+tidy.all %>%
+  filter(word!="canada")%>%
+  inner_join(get_sentiments("nrc")) %>%
+  filter(!sentiment %in% c("positive", 
+                           "negative"))%>%
+  count(word,sentiment, sort=TRUE)%>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = brewer.pal(8, "Dark2"),
+                   title.size=1.0, max.words=200)
+
